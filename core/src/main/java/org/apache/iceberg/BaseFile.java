@@ -123,9 +123,9 @@ abstract class BaseFile<F>
            PartitionData partition, long fileSizeInBytes, long recordCount,
            Map<Integer, Long> columnSizes, Map<Integer, Long> valueCounts,
            Map<Integer, Long> nullValueCounts, Map<Integer, Long> nanValueCounts,
+           Map<Integer, ByteBuffer> lowerBounds, Map<Integer, ByteBuffer> upperBounds,
            Integer zorderLowerBound, Integer zorderUpperBound, List<Integer> zorderColumns,
-           Map<Integer, ByteBuffer> lowerBounds, Map<Integer, ByteBuffer> upperBounds, List<Long> splitOffsets,
-           int[] equalityFieldIds, Integer sortOrderId, ByteBuffer keyMetadata) {
+           List<Long> splitOffsets, int[] equalityFieldIds, Integer sortOrderId, ByteBuffer keyMetadata) {
     this.partitionSpecId = specId;
     this.content = content;
     this.filePath = filePath;
