@@ -55,6 +55,10 @@ public class ExpressionVisitors {
       return null;
     }
 
+    public <T> R predicate(BoundPredicate<T> pred, Boolean zorderUseFlag) {
+      return predicate(pred);
+    }
+
     public <T> R predicate(UnboundPredicate<T> pred) {
       return null;
     }
@@ -103,6 +107,10 @@ public class ExpressionVisitors {
       return null;
     }
 
+    public <T> R eq(BoundReference<T> ref, Literal<T> lit, Boolean zorderUseFlag) {
+      return eq(ref, lit);
+    }
+
     public <T> R notEq(BoundReference<T> ref, Literal<T> lit) {
       return null;
     }
@@ -122,7 +130,7 @@ public class ExpressionVisitors {
     @Override
     public <T> R predicate(BoundPredicate<T> pred) {
       ValidationException.check(pred.term() instanceof BoundReference,
-          "Visitor %s does not support expression: %s", this, pred.term());
+              "Visitor %s does not support expression: %s", this, pred.term());
 
       if (pred.isLiteralPredicate()) {
         BoundLiteralPredicate<T> literalPred = pred.asLiteralPredicate();
@@ -137,6 +145,60 @@ public class ExpressionVisitors {
             return gtEq((BoundReference<T>) pred.term(), literalPred.literal());
           case EQ:
             return eq((BoundReference<T>) pred.term(), literalPred.literal());
+          case NOT_EQ:
+            return notEq((BoundReference<T>) pred.term(), literalPred.literal());
+          case STARTS_WITH:
+            return startsWith((BoundReference<T>) pred.term(),  literalPred.literal());
+          default:
+            throw new IllegalStateException("Invalid operation for BoundLiteralPredicate: " + pred.op());
+        }
+
+      } else if (pred.isUnaryPredicate()) {
+        switch (pred.op()) {
+          case IS_NULL:
+            return isNull((BoundReference<T>) pred.term());
+          case NOT_NULL:
+            return notNull((BoundReference<T>) pred.term());
+          case IS_NAN:
+            return isNaN((BoundReference<T>) pred.term());
+          case NOT_NAN:
+            return notNaN((BoundReference<T>) pred.term());
+          default:
+            throw new IllegalStateException("Invalid operation for BoundUnaryPredicate: " + pred.op());
+        }
+
+      } else if (pred.isSetPredicate()) {
+        switch (pred.op()) {
+          case IN:
+            return in((BoundReference<T>) pred.term(), pred.asSetPredicate().literalSet());
+          case NOT_IN:
+            return notIn((BoundReference<T>) pred.term(), pred.asSetPredicate().literalSet());
+          default:
+            throw new IllegalStateException("Invalid operation for BoundSetPredicate: " + pred.op());
+        }
+      }
+
+      throw new IllegalStateException("Unsupported bound predicate: " + pred.getClass().getName());
+    }
+
+    @Override
+    public <T> R predicate(BoundPredicate<T> pred, Boolean zorderUseFlag) {
+      ValidationException.check(pred.term() instanceof BoundReference,
+              "Visitor %s does not support expression: %s", this, pred.term());
+
+      if (pred.isLiteralPredicate()) {
+        BoundLiteralPredicate<T> literalPred = pred.asLiteralPredicate();
+        switch (pred.op()) {
+          case LT:
+            return lt((BoundReference<T>) pred.term(), literalPred.literal());
+          case LT_EQ:
+            return ltEq((BoundReference<T>) pred.term(), literalPred.literal());
+          case GT:
+            return gt((BoundReference<T>) pred.term(), literalPred.literal());
+          case GT_EQ:
+            return gtEq((BoundReference<T>) pred.term(), literalPred.literal());
+          case EQ:
+            return eq((BoundReference<T>) pred.term(), literalPred.literal(), zorderUseFlag);
           case NOT_EQ:
             return notEq((BoundReference<T>) pred.term(), literalPred.literal());
           case STARTS_WITH:
@@ -216,6 +278,10 @@ public class ExpressionVisitors {
       return null;
     }
 
+    public <T> R eq(Bound<T> expr, Literal<T> lit, Boolean zorderUseFlag) {
+      return eq(expr, lit);
+    }
+
     public <T> R notEq(Bound<T> expr, Literal<T> lit) {
       return null;
     }
@@ -284,6 +350,57 @@ public class ExpressionVisitors {
     }
 
     @Override
+    public <T> R predicate(BoundPredicate<T> pred, Boolean zorderUseFlag) {
+      if (pred.isLiteralPredicate()) {
+        BoundLiteralPredicate<T> literalPred = pred.asLiteralPredicate();
+        switch (pred.op()) {
+          case LT:
+            return lt(pred.term(), literalPred.literal());
+          case LT_EQ:
+            return ltEq(pred.term(), literalPred.literal());
+          case GT:
+            return gt(pred.term(), literalPred.literal());
+          case GT_EQ:
+            return gtEq(pred.term(), literalPred.literal());
+          case EQ:
+            return eq(pred.term(), literalPred.literal(), zorderUseFlag);
+          case NOT_EQ:
+            return notEq(pred.term(), literalPred.literal());
+          case STARTS_WITH:
+            return startsWith(pred.term(),  literalPred.literal());
+          default:
+            throw new IllegalStateException("Invalid operation for BoundLiteralPredicate: " + pred.op());
+        }
+
+      } else if (pred.isUnaryPredicate()) {
+        switch (pred.op()) {
+          case IS_NULL:
+            return isNull(pred.term());
+          case NOT_NULL:
+            return notNull(pred.term());
+          case IS_NAN:
+            return isNaN(pred.term());
+          case NOT_NAN:
+            return notNaN(pred.term());
+          default:
+            throw new IllegalStateException("Invalid operation for BoundUnaryPredicate: " + pred.op());
+        }
+
+      } else if (pred.isSetPredicate()) {
+        switch (pred.op()) {
+          case IN:
+            return in(pred.term(), pred.asSetPredicate().literalSet());
+          case NOT_IN:
+            return notIn(pred.term(), pred.asSetPredicate().literalSet());
+          default:
+            throw new IllegalStateException("Invalid operation for BoundSetPredicate: " + pred.op());
+        }
+      }
+
+      throw new IllegalStateException("Unsupported bound predicate: " + pred.getClass().getName());
+    }
+
+    @Override
     public <T> R predicate(UnboundPredicate<T> pred) {
       throw new UnsupportedOperationException("Not a bound predicate: " + pred);
     }
@@ -315,16 +432,46 @@ public class ExpressionVisitors {
           return visitor.alwaysFalse();
         case NOT:
           Not not = (Not) expr;
-          return visitor.not(visit(not.child(), visitor));
+          return visitor.not(visit(not.child(), visitor, true));
         case AND:
           And and = (And) expr;
-          return visitor.and(visit(and.left(), visitor), visit(and.right(), visitor));
+          return visitor.and(visit(and.left(), visitor, true), visit(and.right(), visitor, true));
         case OR:
           Or or = (Or) expr;
-          return visitor.or(visit(or.left(), visitor), visit(or.right(), visitor));
+          String cl = visitor.getClass().getName();
+          return visitor.or(visit(or.left(), visitor, false), visit(or.right(), visitor, false));
         default:
           throw new UnsupportedOperationException(
-              "Unknown operation: " + expr.op());
+                  "Unknown operation: " + expr.op());
+      }
+    }
+  }
+
+  public static <R> R visit(Expression expr, ExpressionVisitor<R> visitor, Boolean zorderUseFlag) {
+    if (expr instanceof Predicate) {
+      if (expr instanceof BoundPredicate) {
+        return visitor.predicate((BoundPredicate<?>) expr, zorderUseFlag);
+      } else {
+        return visitor.predicate((UnboundPredicate<?>) expr);
+      }
+    } else {
+      switch (expr.op()) {
+        case TRUE:
+          return visitor.alwaysTrue();
+        case FALSE:
+          return visitor.alwaysFalse();
+        case NOT:
+          Not not = (Not) expr;
+          return visitor.not(visit(not.child(), visitor, zorderUseFlag));
+        case AND:
+          And and = (And) expr;
+          return visitor.and(visit(and.left(), visitor, zorderUseFlag), visit(and.right(), visitor, zorderUseFlag));
+        case OR:
+          Or or = (Or) expr;
+          return visitor.or(visit(or.left(), visitor, false), visit(or.right(), visitor, false));
+        default:
+          throw new UnsupportedOperationException(
+                  "Unknown operation: " + expr.op());
       }
     }
   }
@@ -343,7 +490,7 @@ public class ExpressionVisitors {
   public static Boolean visitEvaluator(Expression expr, ExpressionVisitor<Boolean> visitor) {
     if (expr instanceof Predicate) {
       if (expr instanceof BoundPredicate) {
-        return visitor.predicate((BoundPredicate<?>) expr);
+        return visitor.predicate((BoundPredicate<?>) expr, true);
       } else {
         return visitor.predicate((UnboundPredicate<?>) expr);
       }
@@ -355,24 +502,61 @@ public class ExpressionVisitors {
           return visitor.alwaysFalse();
         case NOT:
           Not not = (Not) expr;
-          return visitor.not(visitEvaluator(not.child(), visitor));
+          return visitor.not(visitEvaluator(not.child(), visitor, true));
         case AND:
           And and = (And) expr;
-          Boolean andLeftOperand = visitEvaluator(and.left(), visitor);
+          Boolean andLeftOperand = visitEvaluator(and.left(), visitor, true);
           if (!andLeftOperand) {
             return visitor.alwaysFalse();
           }
-          return visitor.and(Boolean.TRUE, visitEvaluator(and.right(), visitor));
+          return visitor.and(Boolean.TRUE, visitEvaluator(and.right(), visitor, true));
         case OR:
           Or or = (Or) expr;
-          Boolean orLeftOperand = visitEvaluator(or.left(), visitor);
+          Boolean orLeftOperand = visitEvaluator(or.left(), visitor, false);
           if (orLeftOperand) {
             return visitor.alwaysTrue();
           }
-          return visitor.or(Boolean.FALSE, visitEvaluator(or.right(), visitor));
+          return visitor.or(Boolean.FALSE, visitEvaluator(or.right(), visitor, false));
         default:
           throw new UnsupportedOperationException(
-              "Unknown operation: " + expr.op());
+                  "Unknown operation: " + expr.op());
+      }
+    }
+  }
+
+  public static Boolean visitEvaluator(Expression expr, ExpressionVisitor<Boolean> visitor, Boolean zorderUseFlag) {
+    if (expr instanceof Predicate) {
+      if (expr instanceof BoundPredicate) {
+        return visitor.predicate((BoundPredicate<?>) expr, zorderUseFlag);
+      } else {
+        return visitor.predicate((UnboundPredicate<?>) expr);
+      }
+    } else {
+      switch (expr.op()) {
+        case TRUE:
+          return visitor.alwaysTrue();
+        case FALSE:
+          return visitor.alwaysFalse();
+        case NOT:
+          Not not = (Not) expr;
+          return visitor.not(visitEvaluator(not.child(), visitor, zorderUseFlag));
+        case AND:
+          And and = (And) expr;
+          Boolean andLeftOperand = visitEvaluator(and.left(), visitor, zorderUseFlag);
+          if (!andLeftOperand) {
+            return visitor.alwaysFalse();
+          }
+          return visitor.and(Boolean.TRUE, visitEvaluator(and.right(), visitor, zorderUseFlag));
+        case OR:
+          Or or = (Or) expr;
+          Boolean orLeftOperand = visitEvaluator(or.left(), visitor, false);
+          if (orLeftOperand) {
+            return visitor.alwaysTrue();
+          }
+          return visitor.or(Boolean.FALSE, visitEvaluator(or.right(), visitor, false));
+        default:
+          throw new UnsupportedOperationException(
+                  "Unknown operation: " + expr.op());
       }
     }
   }

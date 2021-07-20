@@ -39,7 +39,8 @@ class GenericDataFile extends BaseFile<DataFile> implements DataFile {
                   ByteBuffer keyMetadata, List<Long> splitOffsets, Integer sortOrderId) {
     super(specId, FileContent.DATA, filePath, format, partition, fileSizeInBytes, metrics.recordCount(),
         metrics.columnSizes(), metrics.valueCounts(), metrics.nullValueCounts(), metrics.nanValueCounts(),
-        metrics.lowerBounds(), metrics.upperBounds(), splitOffsets, null, sortOrderId, keyMetadata);
+        metrics.lowerBounds(), metrics.upperBounds(), metrics.zorderLowerBound(), metrics.zorderUpperBound(),
+        metrics.zorderColumns(), splitOffsets, null, sortOrderId, keyMetadata);
   }
 
   /**

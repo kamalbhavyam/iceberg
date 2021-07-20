@@ -25,6 +25,7 @@ import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import org.apache.iceberg.util.ByteBuffers;
 
@@ -40,6 +41,9 @@ public class Metrics implements Serializable {
   private Map<Integer, Long> nanValueCounts = null;
   private Map<Integer, ByteBuffer> lowerBounds = null;
   private Map<Integer, ByteBuffer> upperBounds = null;
+  private Integer zorderLowerBound = null;
+  private Integer zorderUpperBound = null;
+  private List<Integer> zorderColumns = null;
 
   public Metrics() {
   }
@@ -102,6 +106,48 @@ public class Metrics implements Serializable {
     this.nanValueCounts = nanValueCounts;
     this.lowerBounds = lowerBounds;
     this.upperBounds = upperBounds;
+  }
+
+  public Metrics(Long rowCount,
+                 Map<Integer, Long> columnSizes,
+                 Map<Integer, Long> valueCounts,
+                 Map<Integer, Long> nullValueCounts,
+                 Map<Integer, ByteBuffer> lowerBounds,
+                 Map<Integer, ByteBuffer> upperBounds,
+                 Integer zorderLowerBound,
+                 Integer zorderUpperBound,
+                 List<Integer> zorderColumns) {
+    this.rowCount = rowCount;
+    this.columnSizes = columnSizes;
+    this.valueCounts = valueCounts;
+    this.nullValueCounts = nullValueCounts;
+    this.lowerBounds = lowerBounds;
+    this.upperBounds = upperBounds;
+    this.zorderLowerBound = zorderLowerBound;
+    this.zorderUpperBound = zorderUpperBound;
+    this.zorderColumns = zorderColumns;
+  }
+
+  public Metrics(Long rowCount,
+                 Map<Integer, Long> columnSizes,
+                 Map<Integer, Long> valueCounts,
+                 Map<Integer, Long> nullValueCounts,
+                 Map<Integer, Long> nanValueCounts,
+                 Map<Integer, ByteBuffer> lowerBounds,
+                 Map<Integer, ByteBuffer> upperBounds,
+                 Integer zorderLowerBound,
+                 Integer zorderUpperBound,
+                 List<Integer> zorderColumns) {
+    this.rowCount = rowCount;
+    this.columnSizes = columnSizes;
+    this.valueCounts = valueCounts;
+    this.nullValueCounts = nullValueCounts;
+    this.nanValueCounts = nanValueCounts;
+    this.lowerBounds = lowerBounds;
+    this.upperBounds = upperBounds;
+    this.zorderLowerBound = zorderLowerBound;
+    this.zorderUpperBound = zorderUpperBound;
+    this.zorderColumns = zorderColumns;
   }
 
   /**
@@ -173,6 +219,32 @@ public class Metrics implements Serializable {
   }
 
   /**
+   * Get the minimum z-index in file.
+   *
+   * @return min z-index as ByteBuffer
+   */
+  public Integer zorderLowerBound() {
+    return zorderLowerBound;
+  }
+  /**
+   * Get the maximum z-index in file.
+   *
+   * @return max z-index as ByteBuffer
+   */
+  public Integer zorderUpperBound() {
+    return zorderUpperBound;
+  }
+
+  /**
+   * Get a list of column IDs used to z-order file.
+   *
+   * @return List of field IDs as Integers
+   */
+  public List<Integer> zorderColumns() {
+    return zorderColumns;
+  }
+
+  /**
    * Implemented the method to enable serialization of ByteBuffers.
    * @param out The stream where to write
    * @throws IOException On serialization error
@@ -186,6 +258,9 @@ public class Metrics implements Serializable {
 
     writeByteBufferMap(out, lowerBounds);
     writeByteBufferMap(out, upperBounds);
+    out.writeObject(zorderLowerBound);
+    out.writeObject(zorderUpperBound);
+    out.writeObject(zorderColumns);
   }
 
   private static void writeByteBufferMap(ObjectOutputStream out, Map<Integer, ByteBuffer> byteBufferMap)
@@ -220,6 +295,9 @@ public class Metrics implements Serializable {
 
     lowerBounds = readByteBufferMap(in);
     upperBounds = readByteBufferMap(in);
+    zorderLowerBound = (Integer) in.readObject();
+    zorderUpperBound = (Integer) in.readObject();
+    zorderColumns = (List<Integer>) in.readObject();
   }
 
   private static Map<Integer, ByteBuffer> readByteBufferMap(ObjectInputStream in)

@@ -69,6 +69,9 @@ abstract class BaseFile<F>
   private Map<Integer, Long> nanValueCounts = null;
   private Map<Integer, ByteBuffer> lowerBounds = null;
   private Map<Integer, ByteBuffer> upperBounds = null;
+  private Integer zorderLowerBound = null;
+  private Integer zorderUpperBound = null;
+  private List<Integer> zorderColumns = null;
   private long[] splitOffsets = null;
   private int[] equalityIds = null;
   private byte[] keyMetadata = null;
@@ -120,6 +123,7 @@ abstract class BaseFile<F>
            PartitionData partition, long fileSizeInBytes, long recordCount,
            Map<Integer, Long> columnSizes, Map<Integer, Long> valueCounts,
            Map<Integer, Long> nullValueCounts, Map<Integer, Long> nanValueCounts,
+           Integer zorderLowerBound, Integer zorderUpperBound, List<Integer> zorderColumns,
            Map<Integer, ByteBuffer> lowerBounds, Map<Integer, ByteBuffer> upperBounds, List<Long> splitOffsets,
            int[] equalityFieldIds, Integer sortOrderId, ByteBuffer keyMetadata) {
     this.partitionSpecId = specId;
@@ -145,6 +149,9 @@ abstract class BaseFile<F>
     this.nanValueCounts = nanValueCounts;
     this.lowerBounds = SerializableByteBufferMap.wrap(lowerBounds);
     this.upperBounds = SerializableByteBufferMap.wrap(upperBounds);
+    this.zorderLowerBound = zorderLowerBound;
+    this.zorderUpperBound = zorderUpperBound;
+    this.zorderColumns = zorderColumns;
     this.splitOffsets = ArrayUtil.toLongArray(splitOffsets);
     this.equalityIds = equalityFieldIds;
     this.sortOrderId = sortOrderId;
@@ -174,6 +181,9 @@ abstract class BaseFile<F>
       this.nanValueCounts = SerializableMap.copyOf(toCopy.nanValueCounts);
       this.lowerBounds = SerializableByteBufferMap.wrap(SerializableMap.copyOf(toCopy.lowerBounds));
       this.upperBounds = SerializableByteBufferMap.wrap(SerializableMap.copyOf(toCopy.upperBounds));
+      this.zorderLowerBound = toCopy.zorderLowerBound;
+      this.zorderUpperBound = toCopy.zorderUpperBound;
+      this.zorderColumns = toCopy.zorderColumns;
     } else {
       this.columnSizes = null;
       this.valueCounts = null;
@@ -181,6 +191,9 @@ abstract class BaseFile<F>
       this.nanValueCounts = null;
       this.lowerBounds = null;
       this.upperBounds = null;
+      this.zorderLowerBound = null;
+      this.zorderUpperBound = null;
+      this.zorderColumns = null;
     }
     this.fromProjectionPos = toCopy.fromProjectionPos;
     this.keyMetadata = toCopy.keyMetadata == null ? null : Arrays.copyOf(toCopy.keyMetadata, toCopy.keyMetadata.length);
@@ -262,18 +275,27 @@ abstract class BaseFile<F>
         this.upperBounds = SerializableByteBufferMap.wrap((Map<Integer, ByteBuffer>) value);
         return;
       case 12:
-        this.keyMetadata = ByteBuffers.toByteArray((ByteBuffer) value);
+        this.zorderLowerBound = (Integer) value;
         return;
       case 13:
-        this.splitOffsets = ArrayUtil.toLongArray((List<Long>) value);
+        this.zorderUpperBound = (Integer) value;
         return;
       case 14:
-        this.equalityIds = ArrayUtil.toIntArray((List<Integer>) value);
+        this.zorderColumns = (List<Integer>) value;
         return;
       case 15:
-        this.sortOrderId = (Integer) value;
+        this.keyMetadata = ByteBuffers.toByteArray((ByteBuffer) value);
         return;
       case 16:
+        this.splitOffsets = ArrayUtil.toLongArray((List<Long>) value);
+        return;
+      case 17:
+        this.equalityIds = ArrayUtil.toIntArray((List<Integer>) value);
+        return;
+      case 18:
+        this.sortOrderId = (Integer) value;
+        return;
+      case 19:
         this.fileOrdinal = (long) value;
         return;
       default:
@@ -319,14 +341,20 @@ abstract class BaseFile<F>
       case 11:
         return upperBounds;
       case 12:
-        return keyMetadata();
+        return zorderLowerBound;
       case 13:
-        return splitOffsets();
+        return zorderUpperBound;
       case 14:
-        return equalityFieldIds();
+        return zorderColumns;
       case 15:
-        return sortOrderId;
+        return keyMetadata();
       case 16:
+        return splitOffsets();
+      case 17:
+        return equalityFieldIds();
+      case 18:
+        return sortOrderId;
+      case 19:
         return pos;
       default:
         throw new UnsupportedOperationException("Unknown field ordinal: " + pos);
@@ -409,6 +437,21 @@ abstract class BaseFile<F>
   }
 
   @Override
+  public Integer zorderLowerBound() {
+    return zorderLowerBound;
+  }
+
+  @Override
+  public Integer zorderUpperBound() {
+    return zorderUpperBound;
+  }
+
+  @Override
+  public List<Integer> zorderColumns() {
+    return zorderColumns;
+  }
+
+  @Override
   public ByteBuffer keyMetadata() {
     return keyMetadata != null ? ByteBuffer.wrap(keyMetadata) : null;
   }
@@ -451,6 +494,9 @@ abstract class BaseFile<F>
         .add("nan_value_counts", nanValueCounts)
         .add("lower_bounds", lowerBounds)
         .add("upper_bounds", upperBounds)
+        .add("zorder_lower_bound", zorderLowerBound)
+        .add("zorder_upper_bound", zorderUpperBound)
+        .add("zorder_columns", zorderColumns)
         .add("key_metadata", keyMetadata == null ? "null" : "(redacted)")
         .add("split_offsets", splitOffsets == null ? "null" : splitOffsets())
         .add("equality_ids", equalityIds == null ? "null" : equalityFieldIds())

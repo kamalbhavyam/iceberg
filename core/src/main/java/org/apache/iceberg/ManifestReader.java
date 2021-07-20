@@ -55,7 +55,8 @@ public class ManifestReader<F extends ContentFile<F>>
   static final ImmutableList<String> ALL_COLUMNS = ImmutableList.of("*");
 
   private static final Set<String> STATS_COLUMNS = ImmutableSet.of(
-      "value_counts", "null_value_counts", "nan_value_counts", "lower_bounds", "upper_bounds", "record_count");
+      "value_counts", "null_value_counts", "nan_value_counts", "lower_bounds", "upper_bounds",
+      "zorder_lower_bound", "zorder_upper_bound", "zorder_columns", "record_count");
 
   protected enum FileType {
     DATA_FILES(GenericDataFile.class.getName()),

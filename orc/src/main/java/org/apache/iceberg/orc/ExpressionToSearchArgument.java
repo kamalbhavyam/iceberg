@@ -256,6 +256,11 @@ class ExpressionToSearchArgument extends ExpressionVisitors.BoundVisitor<Express
     }
   }
 
+  @Override
+  public <T> Action predicate(BoundPredicate<T> pred, Boolean zorderUseFlag) {
+    return predicate(pred);
+  }
+
   @FunctionalInterface
   interface Action {
     void invoke();

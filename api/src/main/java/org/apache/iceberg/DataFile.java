@@ -56,6 +56,12 @@ public interface DataFile extends ContentFile<DataFile> {
       IntegerType.get(), BinaryType.get()), "Map of column id to lower bound");
   Types.NestedField UPPER_BOUNDS = optional(128, "upper_bounds", MapType.ofRequired(129, 130,
       IntegerType.get(), BinaryType.get()), "Map of column id to upper bound");
+  Types.NestedField ZORDER_LOWER_BOUND = optional(141, "zorder_lower_bound",
+      IntegerType.get(), "Z-Index minimum");
+  Types.NestedField ZORDER_UPPER_BOUND = optional(142, "zorder_upper_bound",
+      IntegerType.get(), "Z-Index maximum");
+  Types.NestedField ZORDER_COLUMNS = optional(143, "zorder_columns",
+      ListType.ofRequired(144, IntegerType.get()), "List of Z-Index columns");
   Types.NestedField KEY_METADATA = optional(131, "key_metadata", BinaryType.get(), "Encryption key metadata blob");
   Types.NestedField SPLIT_OFFSETS = optional(132, "split_offsets", ListType.ofRequired(133, LongType.get()),
       "Splittable offsets");
@@ -83,6 +89,9 @@ public interface DataFile extends ContentFile<DataFile> {
         NAN_VALUE_COUNTS,
         LOWER_BOUNDS,
         UPPER_BOUNDS,
+        ZORDER_LOWER_BOUND,
+        ZORDER_UPPER_BOUND,
+        ZORDER_COLUMNS,
         KEY_METADATA,
         SPLIT_OFFSETS,
         EQUALITY_IDS,

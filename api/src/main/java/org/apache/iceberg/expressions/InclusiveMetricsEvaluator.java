@@ -20,8 +20,12 @@
 package org.apache.iceberg.expressions;
 
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -31,9 +35,13 @@ import org.apache.iceberg.Schema;
 import org.apache.iceberg.expressions.ExpressionVisitors.BoundExpressionVisitor;
 import org.apache.iceberg.types.Comparators;
 import org.apache.iceberg.types.Conversions;
+import org.apache.iceberg.types.Types;
 import org.apache.iceberg.types.Types.StructType;
 import org.apache.iceberg.util.BinaryUtil;
 import org.apache.iceberg.util.NaNUtil;
+import org.davidmoten.hilbert.HilbertCurve;
+import org.davidmoten.hilbert.Range;
+import org.davidmoten.hilbert.SmallHilbertCurve;
 
 import static org.apache.iceberg.expressions.Expressions.rewriteNot;
 
@@ -53,6 +61,7 @@ import static org.apache.iceberg.expressions.Expressions.rewriteNot;
  */
 public class InclusiveMetricsEvaluator {
   private static final int IN_PREDICATE_LIMIT = 200;
+  public static final boolean USE_ZORDER_FILTERING = true;
 
   private final Expression expr;
 
@@ -85,6 +94,11 @@ public class InclusiveMetricsEvaluator {
     private Map<Integer, Long> nanCounts = null;
     private Map<Integer, ByteBuffer> lowerBounds = null;
     private Map<Integer, ByteBuffer> upperBounds = null;
+    private Integer zorderLowerBound = null;
+    private Integer zorderUpperBound = null;
+    private List<Integer> zorderColumns = null;
+    private Map<Integer, Literal<?>>  zorderColumnIdToValueMap = new HashMap<>();
+    private SmallHilbertCurve smallHilbertCurve = null;
 
     private boolean eval(ContentFile<?> file) {
       if (file.recordCount() == 0) {
@@ -103,6 +117,9 @@ public class InclusiveMetricsEvaluator {
       this.nanCounts = file.nanValueCounts();
       this.lowerBounds = file.lowerBounds();
       this.upperBounds = file.upperBounds();
+      this.zorderLowerBound = file.zorderLowerBound();
+      this.zorderUpperBound = file.zorderUpperBound();
+      this.zorderColumns = file.zorderColumns();
 
       return ExpressionVisitors.visitEvaluator(expr, this);
     }
@@ -311,6 +328,45 @@ public class InclusiveMetricsEvaluator {
     }
 
     @Override
+    public <T> Boolean eq(BoundReference<T> ref, Literal<T> lit, Boolean zorderUseFlag) {
+      Boolean useZOrder = zorderUseFlag;
+      Integer id = ref.fieldId();
+
+      if (containsNullsOnly(id) || containsNaNsOnly(id)) {
+        return ROWS_CANNOT_MATCH;
+      }
+
+      if (zorderEvaluatorCheck(id, ref) && useZOrder) {
+        return zorderEvaluate(ref, lit);
+      }
+
+      if (lowerBounds != null && lowerBounds.containsKey(id)) {
+        T lower = Conversions.fromByteBuffer(ref.type(), lowerBounds.get(id));
+
+        if (NaNUtil.isNaN(lower)) {
+          // NaN indicates unreliable bounds. See the InclusiveMetricsEvaluator docs for more.
+          return ROWS_MIGHT_MATCH;
+        }
+
+        int cmp = lit.comparator().compare(lower, lit.value());
+        if (cmp > 0) {
+          return ROWS_CANNOT_MATCH;
+        }
+      }
+
+      if (upperBounds != null && upperBounds.containsKey(id)) {
+        T upper = Conversions.fromByteBuffer(ref.type(), upperBounds.get(id));
+
+        int cmp = lit.comparator().compare(upper, lit.value());
+        if (cmp < 0) {
+          return ROWS_CANNOT_MATCH;
+        }
+      }
+
+      return ROWS_MIGHT_MATCH;
+    }
+
+    @Override
     public <T> Boolean notEq(BoundReference<T> ref, Literal<T> lit) {
       // because the bounds are not necessarily a min or max value, this cannot be answered using
       // them. notEq(col, X) with (X, Y) doesn't guarantee that X is a value in col.
@@ -401,13 +457,67 @@ public class InclusiveMetricsEvaluator {
 
     private boolean containsNullsOnly(Integer id) {
       return valueCounts != null && valueCounts.containsKey(id) &&
-          nullCounts != null && nullCounts.containsKey(id) &&
-          valueCounts.get(id) - nullCounts.get(id) == 0;
+              nullCounts != null && nullCounts.containsKey(id) &&
+              valueCounts.get(id) - nullCounts.get(id) == 0;
     }
 
     private boolean containsNaNsOnly(Integer id) {
       return nanCounts != null && nanCounts.containsKey(id) &&
-          valueCounts != null && nanCounts.get(id).equals(valueCounts.get(id));
+              valueCounts != null && nanCounts.get(id).equals(valueCounts.get(id));
+    }
+
+    private SmallHilbertCurve zorderSetup() {
+      smallHilbertCurve = HilbertCurve.small().bits(Integer.SIZE - 1)
+              .dimensions(this.zorderColumns.size());
+
+      return smallHilbertCurve;
+    }
+
+    private <T> Boolean zorderEvaluatorCheck(Integer id, BoundReference<T> ref) {
+      return USE_ZORDER_FILTERING && zorderColumns != null && zorderColumns.contains(id) &&
+              ref.type() == Types.IntegerType.get();
+    }
+
+    private <T> Boolean zorderEvaluate(BoundReference<T> ref, Literal<T> lit) {
+      if (smallHilbertCurve == null) {
+        smallHilbertCurve = zorderSetup();
+      }
+      zorderColumnIdToValueMap.put(ref.fieldId(), lit);
+
+      List<Long> startPoint = new ArrayList<>(zorderColumns.size());
+      List<Long> endPoint = new ArrayList<>(zorderColumns.size());
+
+      zorderColumns.stream().sequential()
+              .forEach(c -> startPoint.add(zorderColumnIdToValueMap.containsKey(c) ?
+                      ((Number) zorderColumnIdToValueMap.get(c).value()).longValue() :
+                      ((Number) Conversions.fromByteBuffer(Types.IntegerType.get(),
+                              lowerBounds.get(c))).longValue()));
+      zorderColumns.stream().sequential()
+              .forEach(c -> endPoint.add(zorderColumnIdToValueMap.containsKey(c) ?
+                      ((Number) zorderColumnIdToValueMap.get(c).value()).longValue() :
+                      ((Number) Conversions.fromByteBuffer(Types.IntegerType.get(),
+                              upperBounds.get(c))).longValue()));
+
+      Iterator<Range> indexRangeIterator  = smallHilbertCurve.query(startPoint.stream()
+                      .mapToLong(l -> l)
+                      .toArray(),
+              endPoint.stream()
+                      .mapToLong(l -> l)
+                      .toArray(), 1)
+              .iterator();
+      Range curIndex = indexRangeIterator.next();
+      long lowIndex = curIndex.low();
+      long highIndex = curIndex.high();
+
+      if (zorderLowerBound != null && zorderLowerBound > highIndex) {
+        return ROWS_CANNOT_MATCH;
+      }
+
+      if (zorderUpperBound != null && zorderUpperBound < lowIndex) {
+        return ROWS_CANNOT_MATCH;
+      }
+
+      return ROWS_MIGHT_MATCH;
     }
   }
 }

@@ -100,6 +100,26 @@ public interface ContentFile<F> {
   Map<Integer, ByteBuffer> upperBounds();
 
   /**
+   * Returns if collected, lower bound of z-index, null otherwise.
+   */
+  default Integer zorderLowerBound() {
+    return null;
+  }
+
+  /**
+   * Returns if collected, upper bound of z-index, null otherwise.
+   */
+  default Integer zorderUpperBound() {
+    return null;
+  }
+
+  /**
+   * Returns if collected, column IDs used for z-ordering, null otherwise.
+   */
+  default List<Integer> zorderColumns() {
+    return null;
+  }
+  /**
    * Returns metadata about how this file is encrypted, or null if the file is stored in plain text.
    */
   ByteBuffer keyMetadata();

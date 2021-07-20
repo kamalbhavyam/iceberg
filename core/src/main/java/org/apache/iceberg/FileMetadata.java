@@ -20,6 +20,7 @@
 package org.apache.iceberg;
 
 import java.nio.ByteBuffer;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import org.apache.hadoop.fs.FileStatus;
@@ -57,6 +58,9 @@ public class FileMetadata {
     private Map<Integer, Long> nanValueCounts = null;
     private Map<Integer, ByteBuffer> lowerBounds = null;
     private Map<Integer, ByteBuffer> upperBounds = null;
+    private Integer zorderLowerBound = null;
+    private Integer zorderUpperBound = null;
+    private List<Integer> zorderColumns = null;
     private ByteBuffer keyMetadata = null;
     private Integer sortOrderId = null;
 
@@ -81,6 +85,9 @@ public class FileMetadata {
       this.nanValueCounts = null;
       this.lowerBounds = null;
       this.upperBounds = null;
+      this.zorderLowerBound = null;
+      this.zorderUpperBound = null;
+      this.zorderColumns = null;
       this.sortOrderId = null;
     }
 
@@ -100,6 +107,9 @@ public class FileMetadata {
       this.nanValueCounts = toCopy.nanValueCounts();
       this.lowerBounds = toCopy.lowerBounds();
       this.upperBounds = toCopy.upperBounds();
+      this.zorderLowerBound = toCopy.zorderLowerBound();
+      this.zorderUpperBound = toCopy.zorderUpperBound();
+      this.zorderColumns = toCopy.zorderColumns();
       this.keyMetadata = toCopy.keyMetadata() == null ? null
           : ByteBuffers.copy(toCopy.keyMetadata());
       this.sortOrderId = toCopy.sortOrderId();
@@ -188,6 +198,9 @@ public class FileMetadata {
       this.nanValueCounts = metrics.nanValueCounts();
       this.lowerBounds = metrics.lowerBounds();
       this.upperBounds = metrics.upperBounds();
+      this.zorderLowerBound = metrics.zorderLowerBound();
+      this.zorderUpperBound = metrics.zorderUpperBound();
+      this.zorderColumns = metrics.zorderColumns();
       return this;
     }
 
@@ -234,7 +247,8 @@ public class FileMetadata {
       return new GenericDeleteFile(
           specId, content, filePath, format, isPartitioned ? DataFiles.copy(spec, partitionData) : null,
           fileSizeInBytes, new Metrics(
-          recordCount, columnSizes, valueCounts, nullValueCounts, nanValueCounts, lowerBounds, upperBounds),
+          recordCount, columnSizes, valueCounts, nullValueCounts, nanValueCounts,
+          lowerBounds, upperBounds, zorderLowerBound, zorderUpperBound, zorderColumns),
           equalityFieldIds, sortOrderId, keyMetadata);
     }
   }

@@ -260,6 +260,9 @@ class V2Metadata {
         DataFile.NAN_VALUE_COUNTS,
         DataFile.LOWER_BOUNDS,
         DataFile.UPPER_BOUNDS,
+        DataFile.ZORDER_LOWER_BOUND,
+        DataFile.ZORDER_UPPER_BOUND,
+        DataFile.ZORDER_COLUMNS,
         DataFile.KEY_METADATA,
         DataFile.SPLIT_OFFSETS,
         DataFile.EQUALITY_IDS,
@@ -412,12 +415,18 @@ class V2Metadata {
         case 11:
           return wrapped.upperBounds();
         case 12:
-          return wrapped.keyMetadata();
+          return wrapped.zorderLowerBound();
         case 13:
-          return wrapped.splitOffsets();
+          return wrapped.zorderUpperBound();
         case 14:
-          return wrapped.equalityFieldIds();
+          return wrapped.zorderColumns();
         case 15:
+          return wrapped.keyMetadata();
+        case 16:
+          return wrapped.splitOffsets();
+        case 17:
+          return wrapped.equalityFieldIds();
+        case 18:
           return wrapped.sortOrderId();
       }
       throw new IllegalArgumentException("Unknown field ordinal: " + pos);
@@ -496,6 +505,21 @@ class V2Metadata {
     @Override
     public Map<Integer, ByteBuffer> upperBounds() {
       return wrapped.upperBounds();
+    }
+
+    @Override
+    public Integer zorderLowerBound() {
+      return wrapped.zorderLowerBound();
+    }
+
+    @Override
+    public Integer zorderUpperBound() {
+      return wrapped.zorderUpperBound();
+    }
+
+    @Override
+    public List<Integer> zorderColumns() {
+      return wrapped.zorderColumns();
     }
 
     @Override
