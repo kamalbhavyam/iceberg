@@ -30,6 +30,7 @@ import org.apache.spark.sql.catalyst.expressions.IcebergHourTransform
 import org.apache.spark.sql.catalyst.expressions.IcebergMonthTransform
 import org.apache.spark.sql.catalyst.expressions.IcebergTruncateTransform
 import org.apache.spark.sql.catalyst.expressions.IcebergYearTransform
+import org.apache.spark.sql.catalyst.expressions.IcebergZorderTransform
 import org.apache.spark.sql.catalyst.expressions.NamedExpression
 import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
 import org.apache.spark.sql.catalyst.plans.logical.RepartitionByExpression
@@ -47,6 +48,7 @@ import org.apache.spark.sql.connector.expressions.MonthsTransform
 import org.apache.spark.sql.connector.expressions.NamedReference
 import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.connector.expressions.YearsTransform
+import org.apache.spark.sql.connector.expressions.ZorderTransform
 import org.apache.spark.sql.connector.iceberg.distributions.ClusteredDistribution
 import org.apache.spark.sql.connector.iceberg.distributions.Distribution
 import org.apache.spark.sql.connector.iceberg.distributions.OrderedDistribution
@@ -182,6 +184,8 @@ object DistributionAndOrderingUtils {
         IcebergDayTransform(resolve(dt.ref.fieldNames))
       case ht: HoursTransform =>
         IcebergHourTransform(resolve(ht.ref.fieldNames))
+      case ZorderTransform(ref) =>
+        IcebergZorderTransform(ref.map(f => resolve(f.fieldNames())))
       case ref: FieldReference =>
         resolve(ref.fieldNames)
       case _ =>
@@ -229,6 +233,18 @@ object DistributionAndOrderingUtils {
           Some(FieldReference(nf.fieldNames()), value)
         case Seq(Lit(value: Int, IntegerType), nf: NamedReference) =>
           Some(FieldReference(nf.fieldNames()), value)
+        case _ =>
+          None
+      }
+      case _ => None
+    }
+  }
+
+  private object ZorderTransform {
+    def unapply(transform: Transform): Option[Seq[FieldReference]] = transform match {
+      case zt: ZorderTransform => zt.columns match {
+        case s: Seq[NamedReference] =>
+          Option(s.map(f => FieldReference(f.fieldNames())))
         case _ =>
           None
       }

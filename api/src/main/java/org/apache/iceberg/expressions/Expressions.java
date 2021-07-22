@@ -19,6 +19,8 @@
 
 package org.apache.iceberg.expressions;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.stream.Stream;
 import org.apache.iceberg.expressions.Expression.Operation;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
@@ -105,6 +107,14 @@ public class Expressions {
 
   public static <T> UnboundTerm<T> truncate(String name, int width) {
     return new UnboundTransform<>(ref(name), Transforms.truncate(Types.LongType.get(), width));
+  }
+
+  public static <T> List<UnboundTerm<T>> zorder(String... names) {
+    List<UnboundTerm<T>> zorderUnboundTermList = new ArrayList<>();
+    for (String name : names) {
+      zorderUnboundTermList.add(new UnboundTransform<>(ref(name), (Transform<?, T>) Transforms.zorder()));
+    }
+    return zorderUnboundTermList;
   }
 
   public static <T> UnboundPredicate<T> isNull(String name) {

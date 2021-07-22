@@ -37,7 +37,7 @@ import org.apache.spark.sql.catalyst.plans.logical.RepartitionByExpression
 import org.apache.spark.sql.catalyst.plans.logical.ReplaceData
 import org.apache.spark.sql.catalyst.plans.logical.Sort
 import org.apache.spark.sql.catalyst.rules.Rule
-import org.apache.spark.sql.catalyst.utils.DistributionAndOrderingUtils
+import org.apache.spark.sql.catalyst.utils.DistributionAndOrderingUtils.createSortOrder
 import org.apache.spark.sql.catalyst.utils.PlanUtils.isIcebergRelation
 import org.apache.spark.sql.catalyst.utils.RewriteRowLevelOperationHelper
 import org.apache.spark.sql.connector.catalog.Table
@@ -52,7 +52,6 @@ case class RewriteDelete(spark: SparkSession) extends Rule[LogicalPlan] with Rew
 
   import ExtendedDataSourceV2Implicits._
   import RewriteRowLevelOperationHelper._
-  import DistributionAndOrderingUtils._
 
   override def conf: SQLConf = SQLConf.get
 

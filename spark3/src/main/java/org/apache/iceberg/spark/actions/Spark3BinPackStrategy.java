@@ -21,7 +21,6 @@ package org.apache.iceberg.spark.actions;
 
 import java.util.List;
 import java.util.Set;
-import java.util.UUID;
 import org.apache.iceberg.DataFile;
 import org.apache.iceberg.FileScanTask;
 import org.apache.iceberg.Table;
@@ -52,8 +51,7 @@ public class Spark3BinPackStrategy extends BinPackStrategy {
   }
 
   @Override
-  public Set<DataFile> rewriteFiles(List<FileScanTask> filesToRewrite) {
-    String groupID = UUID.randomUUID().toString();
+  public Set<DataFile> rewriteFiles(String groupID, List<FileScanTask> filesToRewrite) {
     try {
       manager.stageTasks(table, groupID, filesToRewrite);
 
@@ -78,7 +76,6 @@ public class Spark3BinPackStrategy extends BinPackStrategy {
       return rewriteCoordinator.fetchNewDataFiles(table, groupID);
     } finally {
       manager.removeTasks(table, groupID);
-      rewriteCoordinator.clearRewrite(table, groupID);
     }
   }
 }

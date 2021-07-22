@@ -19,6 +19,7 @@
 
 package org.apache.iceberg.transforms;
 
+import java.util.ArrayList;
 import java.util.List;
 import org.apache.iceberg.NullOrder;
 import org.apache.iceberg.Schema;
@@ -43,6 +44,8 @@ public interface SortOrderVisitor<T> {
 
   T hour(String sourceName, int sourceId, SortDirection direction, NullOrder nullOrder);
 
+  T zorder(List<String> sourceNames, List<Integer> sourceIds, SortDirection direction, NullOrder nullOrder);
+
   default T unknown(String sourceName, int sourceId, String transform, SortDirection direction, NullOrder nullOrder) {
     throw new UnsupportedOperationException(String.format("Unknown transform %s is not supported", transform));
   }
@@ -59,6 +62,11 @@ public interface SortOrderVisitor<T> {
   static <R> List<R> visit(SortOrder sortOrder, SortOrderVisitor<R> visitor) {
     Schema schema = sortOrder.schema();
     List<R> results = Lists.newArrayListWithExpectedSize(sortOrder.fields().size());
+
+    List<String> zorderSourceNames = new ArrayList<>();
+    List<Integer> zorderIds = new ArrayList<>();
+    SortDirection zorderDirection = SortDirection.ASC;
+    NullOrder zorderNullOrder = NullOrder.NULLS_LAST;
 
     for (SortField field : sortOrder.fields()) {
       String sourceName = schema.findColumnName(field.sourceId());
@@ -80,10 +88,19 @@ public interface SortOrderVisitor<T> {
         results.add(visitor.day(sourceName, field.sourceId(), field.direction(), field.nullOrder()));
       } else if (transform == Timestamps.HOUR) {
         results.add(visitor.hour(sourceName, field.sourceId(), field.direction(), field.nullOrder()));
+      } else if (transform instanceof Zorder) {
+        zorderSourceNames.add(sourceName);
+        zorderIds.add(field.sourceId());
+        zorderDirection = field.direction();
+        zorderNullOrder = field.nullOrder();
       } else if (transform instanceof UnknownTransform) {
         results.add(visitor.unknown(
             sourceName, field.sourceId(), transform.toString(), field.direction(), field.nullOrder()));
       }
+    }
+
+    if (zorderIds.size() > 0) {
+      results.add(visitor.zorder(zorderSourceNames, zorderIds, zorderDirection, zorderNullOrder));
     }
 
     return results;

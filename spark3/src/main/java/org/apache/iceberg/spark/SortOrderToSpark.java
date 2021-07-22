@@ -19,6 +19,7 @@
 
 package org.apache.iceberg.spark;
 
+import java.util.List;
 import org.apache.iceberg.NullOrder;
 import org.apache.iceberg.SortDirection;
 import org.apache.iceberg.transforms.SortOrderVisitor;
@@ -58,5 +59,10 @@ class SortOrderToSpark implements SortOrderVisitor<OrderField> {
   public OrderField hour(String sourceName, int id, SortDirection direction, NullOrder nullOrder) {
     return OrderField.hour(sourceName, direction, nullOrder);
   }
-}
 
+  @Override
+  public OrderField zorder(List<String> sourceNames, List<Integer> sourceIds,
+                           SortDirection direction, NullOrder nullOrder) {
+    return OrderField.zorder(sourceNames, direction, nullOrder);
+  }
+}

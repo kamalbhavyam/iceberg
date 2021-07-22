@@ -19,10 +19,13 @@
 
 package org.apache.iceberg.util;
 
+import java.util.List;
+import java.util.stream.Collectors;
 import org.apache.iceberg.NullOrder;
 import org.apache.iceberg.SortDirection;
 import org.apache.iceberg.SortOrder;
 import org.apache.iceberg.expressions.Expressions;
+import org.apache.iceberg.expressions.Term;
 import org.apache.iceberg.transforms.SortOrderVisitor;
 
 class CopySortOrderFields implements SortOrderVisitor<Void> {
@@ -71,6 +74,16 @@ class CopySortOrderFields implements SortOrderVisitor<Void> {
   @Override
   public Void hour(String sourceName, int sourceId, SortDirection direction, NullOrder nullOrder) {
     builder.sortBy(Expressions.hour(sourceName), direction, nullOrder);
+    return null;
+  }
+
+  @Override
+  public Void zorder(List<String> sourceNames, List<Integer> sourceIds,
+                     SortDirection direction, NullOrder nullOrder) {
+    builder.sortBy(Expressions.zorder(sourceNames.toArray(new String[sourceNames.size()]))
+        .stream()
+        .map(m -> (Term) m)
+        .collect(Collectors.toList()), direction, nullOrder);
     return null;
   }
 }

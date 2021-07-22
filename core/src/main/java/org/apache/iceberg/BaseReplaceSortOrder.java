@@ -19,6 +19,7 @@
 
 package org.apache.iceberg;
 
+import java.util.List;
 import org.apache.iceberg.exceptions.CommitFailedException;
 import org.apache.iceberg.expressions.Term;
 import org.apache.iceberg.util.Tasks;
@@ -67,8 +68,8 @@ public class BaseReplaceSortOrder implements ReplaceSortOrder {
   }
 
   @Override
-  public ReplaceSortOrder asc(Term term, NullOrder nullOrder) {
-    builder.asc(term, nullOrder);
+  public ReplaceSortOrder asc(List<Term> terms, NullOrder nullOrder) {
+    builder.asc(terms, nullOrder);
     return this;
   }
 

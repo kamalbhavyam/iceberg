@@ -99,6 +99,8 @@ public class ParquetUtil {
     Map<Integer, Long> nullValueCounts = Maps.newHashMap();
     Map<Integer, Literal<?>> lowerBounds = Maps.newHashMap();
     Map<Integer, Literal<?>> upperBounds = Maps.newHashMap();
+    Integer zorderLowerBound;
+    Integer zorderUpperBound;
     Set<Integer> missingStats = Sets.newHashSet();
 
     // ignore metrics for fields we failed to determine reliable IDs

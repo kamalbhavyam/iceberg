@@ -202,6 +202,7 @@ project(':iceberg-bundled-guava') {
 project(':iceberg-api') {
   dependencies {
     compile project(path: ':iceberg-bundled-guava', configuration: 'shadow')
+    compile 'com.github.davidmoten:hilbert-curve:0.2.2'
     compileOnly "com.google.errorprone:error_prone_annotations:2.3.3"
     testCompile "org.apache.avro:avro"
   }
@@ -225,6 +226,7 @@ project(':iceberg-core') {
     compile "com.fasterxml.jackson.core:jackson-databind"
     compile "com.fasterxml.jackson.core:jackson-core"
     compile "com.github.ben-manes.caffeine:caffeine"
+    compile 'com.github.davidmoten:hilbert-curve:0.2.2'
     compileOnly("org.apache.hadoop:hadoop-client") {
       exclude group: 'org.apache.avro', module: 'avro'
       exclude group: 'org.slf4j', module: 'slf4j-log4j12'
@@ -986,7 +988,14 @@ if (jdkVersion == '8') {
 }
 
 project(':iceberg-spark3') {
+  apply plugin: 'scala'
+
   sourceSets {
+    main {
+      scala.srcDirs = ['src/main/scala', 'src/main/java']
+      java.srcDirs = []
+    }
+
     // Compile test source against Spark 3.1 and main classes compiled against Spark 3.0
     spark31 {
       java.srcDir "$projectDir/src/test/java"

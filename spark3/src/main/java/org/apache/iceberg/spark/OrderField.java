@@ -19,9 +19,10 @@
 
 package org.apache.iceberg.spark;
 
+import java.util.List;
 import org.apache.iceberg.NullOrder;
 import org.apache.spark.sql.connector.expressions.Expression;
-import org.apache.spark.sql.connector.expressions.Expressions;
+import org.apache.spark.sql.connector.iceberg.expressions.Expressions;
 import org.apache.spark.sql.connector.iceberg.expressions.NullOrdering;
 import org.apache.spark.sql.connector.iceberg.expressions.SortDirection;
 import org.apache.spark.sql.connector.iceberg.expressions.SortOrder;
@@ -57,6 +58,12 @@ class OrderField implements SortOrder {
 
   static OrderField hour(String fieldName, org.apache.iceberg.SortDirection direction, NullOrder nullOrder) {
     return new OrderField(Expressions.hours(fieldName), toSpark(direction), toSpark(nullOrder));
+  }
+
+  static OrderField zorder(List<String> fieldNames, org.apache.iceberg.SortDirection direction, NullOrder nullOrder) {
+    return new OrderField(Expressions.zorder(fieldNames),
+        toSpark(direction),
+        toSpark(nullOrder));
   }
 
   private static SortDirection toSpark(org.apache.iceberg.SortDirection direction) {

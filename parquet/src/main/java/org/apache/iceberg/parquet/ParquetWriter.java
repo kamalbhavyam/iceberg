@@ -21,9 +21,9 @@ package org.apache.iceberg.parquet;
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.iceberg.Metrics;
 import org.apache.iceberg.MetricsConfig;
@@ -35,6 +35,7 @@ import org.apache.iceberg.io.FileAppender;
 import org.apache.iceberg.io.OutputFile;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
 import org.apache.iceberg.relocated.com.google.common.collect.ImmutableMap;
+import org.apache.iceberg.transforms.Transforms;
 import org.apache.parquet.bytes.ByteBufferAllocator;
 import org.apache.parquet.column.ColumnWriteStore;
 import org.apache.parquet.column.ParquetProperties;
@@ -90,7 +91,7 @@ class ParquetWriter<T> implements FileAppender<T>, Closeable {
                 ParquetFileWriter.Mode writeMode) {
     this.targetRowGroupSize = rowGroupSize;
     this.props = properties;
-    this.metadata = ImmutableMap.copyOf(metadata);
+    this.metadata = new HashMap<>(metadata);
     this.compressor = new CodecFactory(conf, props.getPageSizeThreshold()).getCompressor(codec);
     this.parquetSchema = ParquetSchemaUtil.convert(schema, "table");
     this.model = (ParquetValueWriter<T>) createWriterFunc.apply(parquetSchema);
@@ -119,6 +120,26 @@ class ParquetWriter<T> implements FileAppender<T>, Closeable {
     model.write(0, value);
     writeStore.endRecord();
     checkSize();
+//    try {
+      String zorderColumnsString = metadata.get("zorderColumns");
+      List<Integer> zorderColumns = new ArrayList<>();
+      Arrays.stream(zorderColumnsString.substring(1,zorderColumnsString.length()-1)
+          .split(",")).filter(v -> v.length() > 0).forEach(m -> zorderColumns.add(Integer.valueOf(m.trim())));
+      if (zorderColumns.size() > 0 && model instanceof ParquetValueWriters.StructWriter) {
+        List<Object> zorderValues = new ArrayList<>();
+        zorderColumns.stream().sorted().forEachOrdered(c -> zorderValues
+            .add(((ParquetValueWriters.StructWriter) model).get(value, c-1)));
+        Integer zorderCurrentValue = Transforms.zorder().apply(zorderValues);
+        if (Integer.valueOf(metadata.get("zorderLowerBound")) > zorderCurrentValue) {
+          metadata.put("zorderLowerBound", zorderCurrentValue.toString());
+        }
+        if (Integer.valueOf(metadata.get("zorderUpperBound")) < zorderCurrentValue) {
+          metadata.put("zorderUpperBound", zorderCurrentValue.toString());
+        }
+      }
+//    } catch (Exception e) {
+//      throw new RuntimeException("welp");
+//    }
   }
 
   @Override

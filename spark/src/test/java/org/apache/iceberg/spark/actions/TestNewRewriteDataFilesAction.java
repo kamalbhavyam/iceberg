@@ -28,21 +28,29 @@ import java.util.Random;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.iceberg.AssertHelpers;
+import org.apache.iceberg.DataFile;
 import org.apache.iceberg.FileScanTask;
+import org.apache.iceberg.NullOrder;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
+import org.apache.iceberg.SortOrder;
+import org.apache.iceberg.StructLike;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.TableProperties;
+import org.apache.iceberg.TableScan;
 import org.apache.iceberg.actions.ActionsProvider;
 import org.apache.iceberg.actions.BinPackStrategy;
 import org.apache.iceberg.actions.RewriteDataFiles;
 import org.apache.iceberg.actions.RewriteDataFiles.Result;
 import org.apache.iceberg.actions.RewriteDataFilesCommitManager;
 import org.apache.iceberg.actions.RewriteFileGroup;
+import org.apache.iceberg.actions.SortStrategy;
 import org.apache.iceberg.exceptions.CommitStateUnknownException;
 import org.apache.iceberg.expressions.Expressions;
+import org.apache.iceberg.expressions.Term;
 import org.apache.iceberg.hadoop.HadoopTables;
 import org.apache.iceberg.io.CloseableIterable;
 import org.apache.iceberg.relocated.com.google.common.collect.ImmutableList;
@@ -52,6 +60,7 @@ import org.apache.iceberg.relocated.com.google.common.collect.Lists;
 import org.apache.iceberg.relocated.com.google.common.collect.Maps;
 import org.apache.iceberg.relocated.com.google.common.collect.Streams;
 import org.apache.iceberg.spark.SparkTestBase;
+import org.apache.iceberg.spark.source.FourColumnRecord;
 import org.apache.iceberg.spark.source.ThreeColumnRecord;
 import org.apache.iceberg.types.Comparators;
 import org.apache.iceberg.types.Conversions;
@@ -79,24 +88,29 @@ import static org.mockito.Mockito.spy;
 
 public abstract class TestNewRewriteDataFilesAction extends SparkTestBase {
 
-  protected abstract ActionsProvider actions();
-  protected abstract Set<String> cacheContents(Table table);
-
   private static final HadoopTables TABLES = new HadoopTables(new Configuration());
   private static final Schema SCHEMA = new Schema(
       optional(1, "c1", Types.IntegerType.get()),
       optional(2, "c2", Types.StringType.get()),
       optional(3, "c3", Types.StringType.get())
   );
-
+  private static final Schema SCHEMA4COL = new Schema(
+      optional(1, "c1", Types.IntegerType.get()),
+      optional(2, "c2", Types.StringType.get()),
+      optional(3, "c3", Types.StringType.get()),
+      optional(4, "c4", Types.IntegerType.get())
+  );
   @Rule
   public TemporaryFolder temp = new TemporaryFolder();
-
   private String tableLocation = null;
+
+  protected abstract ActionsProvider actions();
+
+  protected abstract Set<String> cacheContents(Table table);
 
   @Before
   public void setupTableLocation() throws Exception {
-    File tableDir = temp.newFolder();
+    File tableDir = temp.newFolder("kamalbhavyam");
     this.tableLocation = tableDir.toURI().toString();
   }
 
@@ -591,6 +605,238 @@ public abstract class TestNewRewriteDataFilesAction extends SparkTestBase {
   }
 
   @Test
+  public void testSortMultipleGroups() {
+    Table table = createTable(20);
+    shouldHaveFiles(table, 20);
+    table.replaceSortOrder().asc("c2").commit();
+    int fileSize = averageFileSize(table);
+
+    List<Object[]> originalData = currentData();
+
+    // Perform a rewrite but only allow 2 files to be compacted at a time
+    RewriteDataFiles.Result result =
+        basicRewrite(table)
+            .sort()
+            .option(SortStrategy.REWRITE_ALL, "true")
+            .option(RewriteDataFiles.MAX_FILE_GROUP_SIZE_BYTES, Integer.toString(fileSize * 2 + 100))
+            .option(BinPackStrategy.MIN_INPUT_FILES, "1")
+            .execute();
+
+    Assert.assertEquals("Should have 10 fileGroups", result.rewriteResults().size(), 10);
+
+    table.refresh();
+
+    List<Object[]> postRewriteData = currentData();
+    assertEquals("We shouldn't have changed the data", originalData, postRewriteData);
+
+    shouldHaveSnapshots(table, 2);
+    shouldHaveACleanCache(table);
+  }
+
+  @Test
+  public void testSimpleSort() {
+    Table table = createTable(20);
+    shouldHaveFiles(table, 20);
+    table.replaceSortOrder().asc("c2", NullOrder.NULLS_LAST).commit();
+    shouldHaveLastCommitUnsorted(table, "c2");
+
+    List<Object[]> originalData = currentData();
+
+    RewriteDataFiles.Result result =
+        basicRewrite(table)
+            .sort()
+            .option(SortStrategy.MIN_INPUT_FILES, "1")
+            .option(SortStrategy.REWRITE_ALL, "true")
+            .option(RewriteDataFiles.TARGET_FILE_SIZE_BYTES, Integer.toString(averageFileSize(table)))
+            .execute();
+
+    Assert.assertEquals("Should have 1 fileGroups", result.rewriteResults().size(), 1);
+
+    table.refresh();
+
+    List<Object[]> postRewriteData = currentData();
+    assertEquals("We shouldn't have changed the data", originalData, postRewriteData);
+
+    shouldHaveSnapshots(table, 2);
+    shouldHaveACleanCache(table);
+    shouldHaveMultipleFiles(table);
+    shouldHaveLastCommitSorted(table, "c2");
+  }
+
+  @Test
+  public void testSimpleSortZOrder() {
+    Table table = createTable4Col(2000);
+    shouldHaveFiles(table, 2000);
+
+    TableScan unsortedScan = table.newScan().filter(Expressions.equal("c1", 1800));
+    Integer scanUnsortedFiles = Iterables.size(unsortedScan.planFiles());
+    System.out.println(scanUnsortedFiles);
+
+    table.replaceSortOrder().asc(Expressions.zorder("c1", "c4")
+        .stream().map(m -> (Term) m).collect(Collectors.toList()), NullOrder.NULLS_LAST)
+        .commit();
+    shouldHaveLastCommitUnsorted(table, "c1");
+
+    List<Object[]> originalData = currentData4Col();
+
+    RewriteDataFiles.Result result =
+        basicRewrite(table)
+            .sort()
+            .option(SortStrategy.MIN_INPUT_FILES, "1")
+            .option(SortStrategy.REWRITE_ALL, "true")
+            .option(RewriteDataFiles.TARGET_FILE_SIZE_BYTES, Integer.toString(averageFileSize(table)))
+            .execute();
+
+    Assert.assertEquals("Should have 1 fileGroups", result.rewriteResults().size(), 1);
+
+    table.refresh();
+
+    List<Object[]> postRewriteData = currentData4Col();
+    assertEquals("We shouldn't have changed the data", originalData, postRewriteData);
+
+    TableScan sortedScan = table.newScan().filter(Expressions.equal("c1", 1800));
+    Integer scanSortedFiles = Iterables.size(sortedScan.planFiles());
+    System.out.println(scanSortedFiles);
+
+    shouldHaveSnapshots(table, 2);
+    shouldHaveACleanCache(table);
+    shouldHaveMultipleFiles(table);
+    shouldHaveLastCommitSorted(table, "c1");
+  }
+
+  @Test
+  public void testSimpleSortZOrderRealistic() {
+    Table table = createTable4ColRealistic(2000);
+    shouldHaveFiles(table, 2000);
+
+    TableScan unsortedScan = table.newScan().filter(Expressions.equal("c1", 1800));
+    Integer scanUnsortedFiles = Iterables.size(unsortedScan.planFiles());
+    System.out.println(scanUnsortedFiles);
+
+    table.replaceSortOrder().asc(Expressions.zorder("c1", "c4")
+        .stream().map(m -> (Term) m).collect(Collectors.toList()), NullOrder.NULLS_LAST)
+        .commit();
+    shouldHaveLastCommitUnsorted(table, "c1");
+
+    List<Object[]> originalData = currentData4Col();
+
+    RewriteDataFiles.Result result =
+        basicRewrite(table)
+            .sort()
+            .option(SortStrategy.MIN_INPUT_FILES, "1")
+            .option(SortStrategy.REWRITE_ALL, "true")
+            .option(RewriteDataFiles.TARGET_FILE_SIZE_BYTES, Integer.toString(averageFileSize(table)))
+            .execute();
+
+    Assert.assertEquals("Should have 1 fileGroups", result.rewriteResults().size(), 1);
+
+    table.refresh();
+
+    List<Object[]> postRewriteData = currentData4Col();
+    assertEquals("We shouldn't have changed the data", originalData, postRewriteData);
+
+    TableScan sortedScan = table.newScan().filter(Expressions.equal("c1", 1800));
+    Integer scanSortedFiles = Iterables.size(sortedScan.planFiles());
+    System.out.println(scanSortedFiles);
+
+    shouldHaveSnapshots(table, 2);
+    shouldHaveACleanCache(table);
+    shouldHaveMultipleFiles(table);
+    shouldHaveLastCommitUnsorted(table, "c1");
+  }
+
+  @Test
+  public void testSortAfterPartitionChange() {
+    Table table = createTable(20);
+    shouldHaveFiles(table, 20);
+    table.updateSpec().addField(Expressions.bucket("c1", 4)).commit();
+    table.replaceSortOrder().asc("c2").commit();
+    shouldHaveLastCommitUnsorted(table, "c2");
+
+    List<Object[]> originalData = currentData();
+
+    RewriteDataFiles.Result result =
+        basicRewrite(table)
+            .sort()
+            .option(SortStrategy.MIN_INPUT_FILES, "1")
+            .option(SortStrategy.REWRITE_ALL, "true")
+            .option(RewriteDataFiles.TARGET_FILE_SIZE_BYTES, Integer.toString(averageFileSize(table)))
+            .execute();
+
+    Assert.assertEquals("Should have 1 fileGroup because all files were not correctly partitioned",
+        result.rewriteResults().size(), 1);
+
+    table.refresh();
+
+    List<Object[]> postRewriteData = currentData();
+    assertEquals("We shouldn't have changed the data", originalData, postRewriteData);
+
+    shouldHaveSnapshots(table, 2);
+    shouldHaveACleanCache(table);
+    shouldHaveMultipleFiles(table);
+    shouldHaveLastCommitSorted(table, "c2");
+  }
+
+  @Test
+  public void testSortCustomSortOrder() {
+    Table table = createTable(20);
+    shouldHaveLastCommitUnsorted(table, "c2");
+    shouldHaveFiles(table, 20);
+
+    List<Object[]> originalData = currentData();
+
+    RewriteDataFiles.Result result =
+        basicRewrite(table)
+            .sort(SortOrder.builderFor(table.schema()).asc("c2").build())
+            .option(SortStrategy.REWRITE_ALL, "true")
+            .option(RewriteDataFiles.TARGET_FILE_SIZE_BYTES, Integer.toString(averageFileSize(table)))
+            .execute();
+
+    Assert.assertEquals("Should have 1 fileGroups", result.rewriteResults().size(), 1);
+
+    table.refresh();
+
+    List<Object[]> postRewriteData = currentData();
+    assertEquals("We shouldn't have changed the data", originalData, postRewriteData);
+
+    shouldHaveSnapshots(table, 2);
+    shouldHaveACleanCache(table);
+    shouldHaveMultipleFiles(table);
+    shouldHaveLastCommitSorted(table, "c2");
+  }
+
+  @Test
+  public void testAutoSortShuffleOutput() {
+    Table table = createTable(20);
+    shouldHaveLastCommitUnsorted(table, "c2");
+    shouldHaveFiles(table, 20);
+
+    List<Object[]> originalData = currentData();
+
+    RewriteDataFiles.Result result =
+        basicRewrite(table)
+            .sort(SortOrder.builderFor(table.schema()).asc("c2").build())
+            .option(SortStrategy.MAX_FILE_SIZE_BYTES, Integer.toString((averageFileSize(table) / 2) + 2))
+            // Divide files in 2
+            .option(RewriteDataFiles.TARGET_FILE_SIZE_BYTES, Integer.toString(averageFileSize(table) / 2))
+            .option(SortStrategy.MIN_INPUT_FILES, "1")
+            .execute();
+
+    Assert.assertEquals("Should have 1 fileGroups", result.rewriteResults().size(), 1);
+    Assert.assertTrue("Should have written 40+ files", Iterables.size(table.currentSnapshot().addedFiles()) >= 40);
+
+    table.refresh();
+
+    List<Object[]> postRewriteData = currentData();
+    assertEquals("We shouldn't have changed the data", originalData, postRewriteData);
+
+    shouldHaveSnapshots(table, 2);
+    shouldHaveACleanCache(table);
+    shouldHaveMultipleFiles(table);
+    shouldHaveLastCommitSorted(table, "c2");
+  }
+
+  @Test
   public void testCommitStateUnknownException() {
     Table table = createTable(20);
     shouldHaveFiles(table, 20);
@@ -619,14 +865,57 @@ public abstract class TestNewRewriteDataFilesAction extends SparkTestBase {
     shouldHaveSnapshots(table, 2); // Commit actually Succeeded
   }
 
+  @Test
+  public void testZOrderSort() {
+    Table table = createTable(20);
+    shouldHaveLastCommitUnsorted(table, "c2");
+    shouldHaveFiles(table, 20);
+
+    List<Object[]> originalData = currentData();
+
+    RewriteDataFiles.Result result =
+        basicRewrite(table)
+            .zOrder("c2", "c3")
+            .option(SortStrategy.MAX_FILE_SIZE_BYTES, Integer.toString((averageFileSize(table) / 2) + 2))
+            // Divide files in 2
+            .option(RewriteDataFiles.TARGET_FILE_SIZE_BYTES, Integer.toString(averageFileSize(table) / 2))
+            .option(SortStrategy.MIN_INPUT_FILES, "1")
+            .execute();
+
+    Assert.assertEquals("Should have 1 fileGroups", result.rewriteResults().size(), 1);
+    Assert.assertTrue("Should have written 40+ files", Iterables.size(table.currentSnapshot().addedFiles()) >= 40);
+
+    table.refresh();
+
+    List<Object[]> postRewriteData = currentData();
+    assertEquals("We shouldn't have changed the data", originalData, postRewriteData);
+
+    shouldHaveSnapshots(table, 2);
+    shouldHaveACleanCache(table);
+    shouldHaveMultipleFiles(table);
+    shouldHaveLastCommitSorted(table, "c2");
+  }
+
   protected List<Object[]> currentData() {
     return rowsToJava(spark.read().format("iceberg").load(tableLocation)
         .sort("c1", "c2", "c3")
         .collectAsList());
   }
 
+  protected List<Object[]> currentData4Col() {
+    return rowsToJava(spark.read().format("iceberg").load(tableLocation)
+        .sort("c1", "c2", "c3", "c4")
+        .collectAsList());
+  }
+
   protected long testDataSize(Table table) {
     return Streams.stream(table.newScan().planFiles()).mapToLong(FileScanTask::length).sum();
+  }
+
+  protected void shouldHaveMultipleFiles(Table table) {
+    table.refresh();
+    int numFiles = Iterables.size(table.newScan().planFiles());
+    Assert.assertTrue(String.format("Should have multiple files, had %d", numFiles), numFiles > 1);
   }
 
   protected void shouldHaveFiles(Table table, int numExpected) {
@@ -665,7 +954,6 @@ public abstract class TestNewRewriteDataFilesAction extends SparkTestBase {
   protected <T> void shouldHaveLastCommitUnsorted(Table table, String column) {
     List<Pair<Pair<T, T>, Pair<T, T>>>
         overlappingFiles = getOverlappingFiles(table, column);
-
     Assert.assertNotEquals("Found overlapping files", Collections.emptyList(), overlappingFiles);
   }
 
@@ -674,36 +962,45 @@ public abstract class TestNewRewriteDataFilesAction extends SparkTestBase {
     NestedField field = table.schema().caseInsensitiveFindField(column);
     int columnId = field.fieldId();
     Class<T> javaClass = (Class<T>) field.type().typeId().javaClass();
-    List<Pair<T, T>> columnBounds =
-        Streams.stream(table.currentSnapshot().addedFiles())
-            .map(file -> Pair.of(
-                javaClass.cast(Conversions.fromByteBuffer(field.type(), file.lowerBounds().get(columnId))),
-                javaClass.cast(Conversions.fromByteBuffer(field.type(), file.upperBounds().get(columnId)))))
-            .collect(Collectors.toList());
+    Map<StructLike, List<DataFile>> filesByPartition = Streams.stream(table.currentSnapshot().addedFiles())
+        .collect(Collectors.groupingBy(DataFile::partition));
 
-    Comparator<T> comparator = Comparators.forType(field.type().asPrimitiveType());
+    Stream<Pair<Pair<T, T>, Pair<T, T>>> overlaps =
+        filesByPartition.entrySet().stream().flatMap(entry -> {
+          List<Pair<T, T>> columnBounds =
+              entry.getValue().stream()
+                  .map(file -> Pair.of(
+                      javaClass.cast(Conversions.fromByteBuffer(field.type(), file.lowerBounds().get(columnId))),
+                      javaClass.cast(Conversions.fromByteBuffer(field.type(), file.upperBounds().get(columnId)))))
+                  .collect(Collectors.toList());
 
-    List<Pair<Pair<T, T>, Pair<T, T>>> overlappingFiles = columnBounds.stream()
-        .flatMap(left -> columnBounds.stream().map(right -> Pair.of(left, right)))
-        .filter(filePair -> {
-          Pair<T, T> left = filePair.first();
-          T leftLower = left.first();
-          T leftUpper = left.second();
-          Pair<T, T> right = filePair.second();
-          T rightLower = right.first();
-          T rightUpper = right.second();
-          boolean boundsOverlap =
-              (comparator.compare(leftUpper, rightLower) > 0 && comparator.compare(leftUpper, rightUpper) < 0) ||
-                  (comparator.compare(leftLower, rightLower) > 0 && comparator.compare(leftLower, rightUpper) < 0);
+          Comparator<T> comparator = Comparators.forType(field.type().asPrimitiveType());
 
-          return (left != right) && boundsOverlap;
-        })
-        .collect(Collectors.toList());
-    return overlappingFiles;
+          List<Pair<Pair<T, T>, Pair<T, T>>> overlappingFiles = columnBounds.stream()
+              .flatMap(left -> columnBounds.stream().map(right -> Pair.of(left, right)))
+              .filter(filePair -> {
+                Pair<T, T> left = filePair.first();
+                T lLower = left.first();
+                T lUpper = left.second();
+                Pair<T, T> right = filePair.second();
+                T rLower = right.first();
+                T rUpper = right.second();
+                boolean boundsOverlap =
+                    (comparator.compare(lUpper, rLower) > 0 && comparator.compare(lUpper, rUpper) < 0) ||
+                        (comparator.compare(lLower, rLower) > 0 && comparator.compare(lLower, rUpper) < 0);
+
+                return (left != right) && boundsOverlap;
+              })
+              .collect(Collectors.toList());
+          return overlappingFiles.stream();
+        });
+
+    return overlaps.collect(Collectors.toList());
   }
 
   /**
    * Create a table with a certain number of files, returns the size of a file
+   *
    * @param files number of files to create
    * @return size of a file
    */
@@ -715,6 +1012,37 @@ public abstract class TestNewRewriteDataFilesAction extends SparkTestBase {
     Assert.assertNull("Table must be empty", table.currentSnapshot());
 
     writeRecords(files, 2000);
+
+    return table;
+  }
+
+
+  /**
+   * Create a table with a certain number of files, returns the size of a file
+   *
+   * @param files number of files to create
+   * @return size of a file
+   */
+  protected Table createTable4Col(int files) {
+    PartitionSpec spec = PartitionSpec.unpartitioned();
+    Map<String, String> options = Maps.newHashMap();
+    Table table = TABLES.create(SCHEMA4COL, spec, options, tableLocation);
+    table.updateProperties().set(TableProperties.PARQUET_ROW_GROUP_SIZE_BYTES, "1024").commit();
+    Assert.assertNull("Table must be empty", table.currentSnapshot());
+
+    writeRecords4Col(files, 20000);
+
+    return table;
+  }
+
+  protected Table createTable4ColRealistic(int files) {
+    PartitionSpec spec = PartitionSpec.unpartitioned();
+    Map<String, String> options = Maps.newHashMap();
+    Table table = TABLES.create(SCHEMA4COL, spec, options, tableLocation);
+    table.updateProperties().set(TableProperties.PARQUET_ROW_GROUP_SIZE_BYTES, "1024").commit();
+    Assert.assertNull("Table must be empty", table.currentSnapshot());
+
+    writeRecords4ColRealistic(files, 20000);
 
     return table;
   }
@@ -732,6 +1060,19 @@ public abstract class TestNewRewriteDataFilesAction extends SparkTestBase {
     return table;
   }
 
+  protected Table createTablePartitioned4Col(int partitions, int files) {
+    PartitionSpec spec = PartitionSpec.builderFor(SCHEMA)
+        .identity("c1")
+        .truncate("c2", 2)
+        .build();
+    Map<String, String> options = Maps.newHashMap();
+    Table table = TABLES.create(SCHEMA, spec, options, tableLocation);
+    Assert.assertNull("Table must be empty", table.currentSnapshot());
+
+    writeRecords4Col(files, 2000, partitions);
+    return table;
+  }
+
   protected int averageFileSize(Table table) {
     table.refresh();
     return (int) Streams.stream(table.newScan().planFiles()).mapToLong(FileScanTask::length).average().getAsDouble();
@@ -739,6 +1080,14 @@ public abstract class TestNewRewriteDataFilesAction extends SparkTestBase {
 
   private void writeRecords(int files, int numRecords) {
     writeRecords(files, numRecords, 0);
+  }
+
+  private void writeRecords4Col(int files, int numRecords) {
+    writeRecords4Col(files, numRecords, 0);
+  }
+
+  private void writeRecords4ColRealistic(int files, int numRecords) {
+    writeRecords4ColRealistic(files, numRecords, 0);
   }
 
   private void writeRecords(int files, int numRecords, int partitions) {
@@ -754,8 +1103,45 @@ public abstract class TestNewRewriteDataFilesAction extends SparkTestBase {
     writeDF(df);
   }
 
+  private void writeRecords4Col(int files, int numRecords, int partitions) {
+    List<FourColumnRecord> records = Lists.newArrayList();
+    List<Integer> data = IntStream.range(0, numRecords).boxed().collect(Collectors.toList());
+    Collections.shuffle(data, new Random(42));
+    if (partitions > 0) {
+      data.forEach(i -> records.add(new FourColumnRecord(i % partitions, "foo" + i, "bar" + i, i % partitions)));
+    } else {
+      data.forEach(i -> records.add(new FourColumnRecord(i, "foo" + i, "bar" + i, i)));
+    }
+    Dataset<Row> df = spark.createDataFrame(records, FourColumnRecord.class).repartition(files);
+    writeDF4Col(df);
+  }
+
+  private void writeRecords4ColRealistic(int files, int numRecords, int partitions) {
+    List<FourColumnRecord> records = Lists.newArrayList();
+    List<Integer> data = IntStream.range(0, numRecords).boxed().collect(Collectors.toList());
+    List<Integer> dataSecondCol = IntStream.range(0, numRecords).boxed().collect(Collectors.toList());
+    Collections.shuffle(data, new Random(42));
+    Collections.shuffle(dataSecondCol, new Random(12));
+    if (partitions > 0) {
+      data.forEach(i -> records.add(new FourColumnRecord(i % partitions, "foo" + i, "bar" + i, dataSecondCol.get(i) % partitions)));
+    } else {
+      data.forEach(i -> records.add(new FourColumnRecord(i, "foo" + i, "bar" + i, dataSecondCol.get(i))));
+    }
+    Dataset<Row> df = spark.createDataFrame(records, FourColumnRecord.class).repartition(files);
+    writeDF4Col(df);
+  }
+
   private void writeDF(Dataset<Row> df) {
     df.select("c1", "c2", "c3")
+        .sortWithinPartitions("c1", "c2")
+        .write()
+        .format("iceberg")
+        .mode("append")
+        .save(tableLocation);
+  }
+
+  private void writeDF4Col(Dataset<Row> df) {
+    df.select("c1", "c2", "c3", "c4")
         .sortWithinPartitions("c1", "c2")
         .write()
         .format("iceberg")

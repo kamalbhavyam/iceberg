@@ -19,6 +19,9 @@
 
 package org.apache.iceberg;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import org.apache.iceberg.expressions.Expressions;
 import org.apache.iceberg.expressions.Term;
 
@@ -65,7 +68,18 @@ public interface SortOrderBuilder<R> {
    * @param nullOrder a null order (first or last)
    * @return this for method chaining
    */
-  R asc(Term term, NullOrder nullOrder);
+  default R asc(Term term, NullOrder nullOrder) {
+    return asc(new ArrayList<>(Arrays.asList(term)), nullOrder);
+  }
+
+  /**
+   * Add an expression term to the sort, ascending with the given null order.
+   *
+   * @param terms a List of expression terms
+   * @param nullOrder a null order (first or last)
+   * @return this for method chaining
+   */
+  R asc(List<Term> terms, NullOrder nullOrder);
 
   /**
    * Add a field to the sort by field name, ascending with nulls first.

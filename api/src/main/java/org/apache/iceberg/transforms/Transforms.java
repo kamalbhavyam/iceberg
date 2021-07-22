@@ -19,6 +19,7 @@
 
 package org.apache.iceberg.transforms;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -55,6 +56,10 @@ public class Transforms {
 
     if (transform.equalsIgnoreCase("identity")) {
       return Identity.get(type);
+    }
+
+    if (transform.equalsIgnoreCase("zorder")) {
+      return Zorder.get();
     }
 
     try {
@@ -191,5 +196,9 @@ public class Transforms {
    */
   public static <T> Transform<T, Void> alwaysNull() {
     return VoidTransform.get();
+  }
+
+  public static Transform<List<Object>, Integer> zorder() {
+    return Zorder.get();
   }
 }

@@ -28,6 +28,7 @@ import org.apache.iceberg.transforms.Transforms
 import org.apache.iceberg.types.Type
 import org.apache.iceberg.types.Types
 import org.apache.iceberg.util.ByteBuffers
+import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.codegen.CodegenFallback
 import org.apache.spark.sql.types.AbstractDataType
 import org.apache.spark.sql.types.BinaryType
@@ -134,4 +135,23 @@ case class IcebergTruncateTransform(child: Expression, width: Int) extends Icebe
   }
 
   override def dataType: DataType = child.dataType
+}
+
+case class IcebergZorderTransform(children: Seq[Expression])
+  extends Expression with CodegenFallback with NullIntolerant {
+
+  override def nullable: Boolean = true
+
+  @transient lazy val zorderFunc: Seq[Any] => Int = children => Transforms
+    .zorder().apply(scala.collection.JavaConverters.seqAsJavaList(children.asInstanceOf[Seq[AnyRef]]))
+
+  override def eval(input: InternalRow): Any = children.isEmpty match {
+    case true =>
+      null
+    case false =>
+
+      zorderFunc(children.map(c => c.eval(input)))
+  }
+
+  override def dataType: DataType = IntegerType
 }

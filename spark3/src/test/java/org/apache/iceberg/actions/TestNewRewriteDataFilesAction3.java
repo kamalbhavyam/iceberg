@@ -21,7 +21,6 @@ package org.apache.iceberg.actions;
 
 import java.util.Set;
 import org.apache.iceberg.Table;
-import org.apache.iceberg.relocated.com.google.common.collect.ImmutableSet;
 import org.apache.iceberg.spark.FileRewriteCoordinator;
 import org.apache.iceberg.spark.FileScanTaskSetManager;
 import org.apache.iceberg.spark.actions.SparkActions;
@@ -38,9 +37,6 @@ public class TestNewRewriteDataFilesAction3 extends TestNewRewriteDataFilesActio
 
   @Override
   protected Set<String> cacheContents(Table table) {
-    return ImmutableSet.<String>builder()
-        .addAll(manager.fetchSetIDs(table))
-        .addAll(coordinator.fetchSetIDs(table))
-        .build();
+    return manager.fetchSets(table);
   }
 }

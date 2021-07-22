@@ -21,11 +21,7 @@ package org.apache.iceberg.parquet;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.Collection;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -109,6 +105,7 @@ public class Parquet {
     private MetricsConfig metricsConfig = MetricsConfig.getDefault();
     private ParquetFileWriter.Mode writeMode = ParquetFileWriter.Mode.CREATE;
     private WriterVersion writerVersion = WriterVersion.PARQUET_1_0;
+    private SortOrder sortOrder = null;
 
     private WriteBuilder(OutputFile file) {
       this.file = file;
@@ -118,6 +115,7 @@ public class Parquet {
       schema(table.schema());
       setAll(table.properties());
       metricsConfig(MetricsConfig.fromProperties(table.properties()));
+      sortOrder(table.sortOrder());
       return this;
     }
 
@@ -159,6 +157,19 @@ public class Parquet {
     public WriteBuilder metricsConfig(MetricsConfig newMetricsConfig) {
       this.metricsConfig = newMetricsConfig;
       return this;
+    }
+
+    public WriteBuilder sortOrder(SortOrder sortOrder) {
+      this.sortOrder = sortOrder;
+      return this;
+    }
+
+    protected List<Integer> sortOrderParser(SortOrder sortOrder) {
+      if (sortOrder == null) {
+        return new ArrayList<Integer>();
+      }
+
+      return sortOrder.fields().stream().map(f -> f.sourceId()).collect(Collectors.toList());
     }
 
     public WriteBuilder overwrite() {
@@ -211,6 +222,9 @@ public class Parquet {
 
       // add the Iceberg schema to keyValueMetadata
       meta("iceberg.schema", SchemaParser.toJson(schema));
+      meta("zorderColumns", sortOrderParser(sortOrder).toString());
+      meta("zorderLowerBound", "-1");
+      meta("zorderUpperBound", "-1");
 
       // Map Iceberg properties to pass down to the Parquet writer
       int rowGroupSize = Integer.parseInt(config.getOrDefault(

@@ -22,6 +22,8 @@ package org.apache.iceberg.spark.actions;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.actions.BinPackStrategy;
 import org.apache.iceberg.actions.RewriteDataFiles;
+import org.apache.iceberg.actions.SortStrategy;
+import org.apache.iceberg.relocated.com.google.common.collect.Lists;
 import org.apache.spark.sql.SparkSession;
 
 public class BaseRewriteDataFilesSpark3Action extends BaseRewriteDataFilesSparkAction {
@@ -33,6 +35,16 @@ public class BaseRewriteDataFilesSpark3Action extends BaseRewriteDataFilesSparkA
   @Override
   protected BinPackStrategy binPackStrategy() {
     return new Spark3BinPackStrategy(table(), spark());
+  }
+
+  @Override
+  protected SortStrategy sortStrategy() {
+    return new Spark3SortStrategy(table(), spark());
+  }
+
+  @Override
+  protected SortStrategy zOrderSortStrategy(String... columnNames) {
+    return new Spark3ZOrderStrategy(table(), spark(), Lists.newArrayList(columnNames));
   }
 
   @Override

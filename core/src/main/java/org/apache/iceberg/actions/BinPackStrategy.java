@@ -80,6 +80,7 @@ public abstract class BinPackStrategy implements RewriteStrategy {
   private long maxFileSize;
   private long targetFileSize;
   private long maxGroupSize;
+  private long specId;
 
   @Override
   public String name() {
@@ -119,6 +120,10 @@ public abstract class BinPackStrategy implements RewriteStrategy {
     minInputFiles = PropertyUtil.propertyAsInt(options,
         MIN_INPUT_FILES,
         MIN_INPUT_FILES_DEFAULT);
+
+    specId = PropertyUtil.propertyAsInt(options,
+        RewriteDataFiles.OUTPUT_PARTITION_SPEC_ID,
+        table().spec().specId());
 
     validateOptions();
     return this;
@@ -234,5 +239,9 @@ public abstract class BinPackStrategy implements RewriteStrategy {
     Preconditions.checkArgument(minInputFiles > 0,
         "Cannot set %s is less than 1. All values less than 1 have the same effect as 1. %d < 1",
         MIN_INPUT_FILES, minInputFiles);
+  }
+
+  protected long specId() {
+    return this.specId;
   }
 }

@@ -197,13 +197,16 @@ public class SortOrder implements Serializable {
     /**
      * Add an expression term to the sort, ascending with the given null order.
      *
-     * @param term an expression term
+     * @param terms a List of expression terms
      * @param nullOrder a null order (first or last)
      * @return this for method chaining
      */
     @Override
-    public Builder asc(Term term, NullOrder nullOrder) {
-      return addSortField(term, SortDirection.ASC, nullOrder);
+    public Builder asc(List<Term> terms, NullOrder nullOrder) {
+      for (Term term : terms) {
+        addSortField(term, SortDirection.ASC, nullOrder);
+      }
+      return this;
     }
 
     /**
@@ -224,6 +227,13 @@ public class SortOrder implements Serializable {
 
     public Builder sortBy(Term term, SortDirection direction, NullOrder nullOrder) {
       return addSortField(term, direction, nullOrder);
+    }
+
+    public Builder sortBy(List<Term> terms, SortDirection direction, NullOrder nullOrder) {
+      for (Term term : terms) {
+        addSortField(term, direction, nullOrder);
+      }
+      return this;
     }
 
 
@@ -286,7 +296,7 @@ public class SortOrder implements Serializable {
     }
   }
 
-  static void checkCompatibility(SortOrder sortOrder, Schema schema) {
+  public static void checkCompatibility(SortOrder sortOrder, Schema schema) {
     for (SortField field : sortOrder.fields) {
       Type sourceType = schema.findType(field.sourceId());
       ValidationException.check(
